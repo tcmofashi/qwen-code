@@ -36,40 +36,53 @@ const external = [
   'tiktoken',
 ];
 
-esbuild
-  .build({
-    entryPoints: ['packages/cli/index.ts'],
-    bundle: true,
-    outfile: 'dist/cli.js',
-    platform: 'node',
-    format: 'esm',
-    target: 'node20',
-    external,
-    packages: 'bundle',
-    inject: [path.resolve(__dirname, 'scripts/esbuild-shims.js')],
-    banner: {
-      js: `// Force strict mode and setup for ESM
+const commonConfig = {
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node20',
+  external,
+  packages: 'bundle',
+  inject: [path.resolve(__dirname, 'scripts/esbuild-shims.js')],
+  banner: {
+    js: `// Force strict mode and setup for ESM
 "use strict";`,
-    },
-    alias: {
-      'is-in-ci': path.resolve(
-        __dirname,
-        'packages/cli/src/patches/is-in-ci.ts',
-      ),
-    },
-    define: {
-      'process.env.CLI_VERSION': JSON.stringify(pkg.version),
-      // Make global available for compatibility
-      global: 'globalThis',
-    },
-    loader: { '.node': 'file' },
-    metafile: true,
-    write: true,
-    keepNames: true,
-  })
-  .then(({ metafile }) => {
+  },
+  alias: {
+    'is-in-ci': path.resolve(
+      __dirname,
+      'packages/cli/src/patches/is-in-ci.ts',
+    ),
+  },
+  define: {
+    'process.env.CLI_VERSION': JSON.stringify(pkg.version),
+    // Make global available for compatibility
+    global: 'globalThis',
+  },
+  loader: { '.node': 'file' },
+  metafile: true,
+  write: true,
+  keepNames: true,
+};
+
+// Build both cli.js and oneagent-bridge.js
+Promise.all([
+  esbuild.build({
+    ...commonConfig,
+    entryPoints: ['packages/cli/index.ts'],
+    outfile: 'dist/cli.js',
+  }),
+  esbuild.build({
+    ...commonConfig,
+    entryPoints: ['packages/cli/src/oneagent-bridge.ts'],
+    outfile: 'dist/oneagent-bridge.js',
+  }),
+])
+  .then(([cliResult, bridgeResult]) => {
+    console.log('✅ Built cli.js and oneagent-bridge.js successfully');
     if (process.env.DEV === 'true') {
-      writeFileSync('./dist/esbuild.json', JSON.stringify(metafile, null, 2));
+      writeFileSync('./dist/esbuild.json', JSON.stringify(cliResult.metafile, null, 2));
+      writeFileSync('./dist/oneagent-bridge.esbuild.json', JSON.stringify(bridgeResult.metafile, null, 2));
     }
   })
   .catch((error) => {
